@@ -1,0 +1,39 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: go build ./cmd/freebeamer-relay
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Deploy to relay.pactsign.net host
+        env:
+          SSH_KEY: ${{ secrets.RELAY_DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          echo "176.58.124.40 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKi40S+tZB4UUO/gYr2wfhindJiKZmGRTUJG3CzM6AcM" > ~/.ssh/known_hosts
+          # The deploy key is restricted server-side to a forced command
+          # (see deploy/README.md); it always runs the same deploy chain
+          # regardless of what's passed here.
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes source@176.58.124.40

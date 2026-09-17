@@ -3,7 +3,25 @@
 Runs the relay in Docker with persistent SQLite storage and an nginx TLS proxy.
 Requires Docker Compose, Ansible, nginx, and certbot on the deployment host.
 
-## First-time setup
+## Automated deploys
+
+`.github/workflows/deploy.yml` deploys on every push to `main` (after
+tests pass): it SSHes into the deployment host with a dedicated key that
+is restricted server-side to a forced command
+(`/home/source/bin/freebeamer-relay-deploy.sh`, outside this repo), which
+pulls `main` into a persistent checkout and re-runs the same
+`ansible-playbook deploy.yml` command described below. First run
+bootstraps `deploy/.env` (a random `FREEBEAMER_RELAY_ADMIN_TOKEN`) and
+the nginx/certbot setup; later runs just rebuild the container, since
+those steps are idempotent and no-op when nothing changed. The relay is
+live at `https://telemetry.pactsign.net` (see the mobile README for why
+this is a temporary hostname).
+
+The SSH private key lives only in the `RELAY_DEPLOY_SSH_KEY` repository
+secret. Rotate it by generating a new keypair, replacing the
+`authorized_keys` entry on the host, and updating the secret.
+
+## Manual first-time setup
 
 1. `cp .env.example .env` and set `FREEBEAMER_RELAY_ADMIN_TOKEN` to a
    real secret (the relay refuses to start without one — see
