@@ -19,4 +19,4 @@ require (
 	modernc.org/memory v1.12.1 // indirect
 )
 
-require github.com/freebeamer/core v0.1.0-alpha.1
+require github.com/freebeamer/core v0.1.0-alpha.3

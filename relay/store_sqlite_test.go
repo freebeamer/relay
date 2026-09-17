@@ -2,6 +2,8 @@ package relay
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -20,24 +22,43 @@ func newTestStore(t *testing.T) *SQLiteStore {
 	return store
 }
 
+// createTestClient pairs a new client the same way a real device
+// would (a pairing link, consumed with a freshly generated Ed25519
+// keypair) and returns both the resulting Client and its private key,
+// so a caller can go on to sign a challenge with it.
+func createTestClient(t *testing.T, store *SQLiteStore, id, displayName string) (Client, ed25519.PrivateKey) {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := id + "-pairing-token"
+	ctx := context.Background()
+	if _, err := store.CreatePairingLink(ctx, hashToken(token), displayName, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	client, err := store.ConsumePairingLink(ctx, hashToken(token), id, pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return client, priv
+}
+
 func TestSQLiteStoreClientLifecycle(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	created, err := store.CreateClient(ctx, "client-1", "Test Client", "hash-1")
-	if err != nil {
-		t.Fatal(err)
-	}
+	created, _ := createTestClient(t, store, "client-1", "Test Client")
 	if created.RevokedAt != nil {
 		t.Fatalf("new client has RevokedAt = %v, want nil", created.RevokedAt)
 	}
 
-	found, err := store.LookupClientByKeyHash(ctx, "hash-1")
+	found, err := store.LookupClientByID(ctx, "client-1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if found.ID != "client-1" || found.DisplayName != "Test Client" {
-		t.Fatalf("LookupClientByKeyHash = %+v", found)
+		t.Fatalf("LookupClientByID = %+v", found)
 	}
 
 	clients, err := store.ListClients(ctx)
@@ -51,8 +72,8 @@ func TestSQLiteStoreClientLifecycle(t *testing.T) {
 	if err := store.RevokeClient(ctx, "client-1"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.LookupClientByKeyHash(ctx, "hash-1"); !errors.Is(err, ErrClientNotFound) {
-		t.Fatalf("LookupClientByKeyHash after revoke: err = %v, want ErrClientNotFound", err)
+	if _, err := store.LookupClientByID(ctx, "client-1"); !errors.Is(err, ErrClientNotFound) {
+		t.Fatalf("LookupClientByID after revoke: err = %v, want ErrClientNotFound", err)
 	}
 	if err := store.RevokeClient(ctx, "client-1"); !errors.Is(err, ErrClientNotFound) {
 		t.Fatalf("re-revoking: err = %v, want ErrClientNotFound", err)
@@ -62,19 +83,128 @@ func TestSQLiteStoreClientLifecycle(t *testing.T) {
 	}
 }
 
-func TestSQLiteStoreLookupUnknownKey(t *testing.T) {
+func TestSQLiteStoreLookupUnknownClient(t *testing.T) {
 	store := newTestStore(t)
-	if _, err := store.LookupClientByKeyHash(context.Background(), "no-such-hash"); !errors.Is(err, ErrClientNotFound) {
+	if _, err := store.LookupClientByID(context.Background(), "no-such-id"); !errors.Is(err, ErrClientNotFound) {
 		t.Fatalf("err = %v, want ErrClientNotFound", err)
+	}
+}
+
+func TestSQLiteStorePairingLinkIsSingleUse(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokenHash := hashToken("a-pairing-token")
+	if _, err := store.CreatePairingLink(ctx, tokenHash, "Bay 3", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	client, err := store.ConsumePairingLink(ctx, tokenHash, "client-1", pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.ID != "client-1" || client.DisplayName != "Bay 3" {
+		t.Fatalf("client = %+v", client)
+	}
+
+	// A second redemption of the same token — whether a retry or a
+	// different device that saw the same link — must fail.
+	if _, err := store.ConsumePairingLink(ctx, tokenHash, "client-2", pub); !errors.Is(err, ErrPairingLinkInvalid) {
+		t.Fatalf("second consume: err = %v, want ErrPairingLinkInvalid", err)
+	}
+}
+
+func TestSQLiteStorePairingLinkExpires(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokenHash := hashToken("expired-token")
+	if _, err := store.CreatePairingLink(ctx, tokenHash, "Bay 3", time.Now().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ConsumePairingLink(ctx, tokenHash, "client-1", pub); !errors.Is(err, ErrPairingLinkInvalid) {
+		t.Fatalf("err = %v, want ErrPairingLinkInvalid", err)
+	}
+}
+
+func TestSQLiteStoreConsumeUnknownPairingLink(t *testing.T) {
+	store := newTestStore(t)
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ConsumePairingLink(context.Background(), hashToken("no-such-token"), "client-1", pub); !errors.Is(err, ErrPairingLinkInvalid) {
+		t.Fatalf("err = %v, want ErrPairingLinkInvalid", err)
+	}
+}
+
+func TestSQLiteStoreDeviceSessionLifecycle(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	createTestClient(t, store, "client-1", "Test Client")
+
+	tokenHash := hashToken("a-session-token")
+	if _, err := store.CreateDeviceSession(ctx, tokenHash, "client-1", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	session, err := store.LookupDeviceSession(ctx, tokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.ClientID != "client-1" {
+		t.Fatalf("session = %+v", session)
+	}
+
+	if err := store.RevokeDeviceSession(ctx, tokenHash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LookupDeviceSession(ctx, tokenHash); !errors.Is(err, ErrSessionInvalid) {
+		t.Fatalf("after revoke: err = %v, want ErrSessionInvalid", err)
+	}
+}
+
+func TestSQLiteStoreDeviceSessionExpires(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	createTestClient(t, store, "client-1", "Test Client")
+
+	tokenHash := hashToken("an-expired-session-token")
+	if _, err := store.CreateDeviceSession(ctx, tokenHash, "client-1", time.Now().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LookupDeviceSession(ctx, tokenHash); !errors.Is(err, ErrSessionInvalid) {
+		t.Fatalf("err = %v, want ErrSessionInvalid", err)
+	}
+}
+
+func TestSQLiteStoreRevokeClientRevokesItsSessions(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	createTestClient(t, store, "client-1", "Test Client")
+
+	tokenHash := hashToken("a-session-token")
+	if _, err := store.CreateDeviceSession(ctx, tokenHash, "client-1", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RevokeClient(ctx, "client-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LookupDeviceSession(ctx, tokenHash); !errors.Is(err, ErrSessionInvalid) {
+		t.Fatalf("session after client revoke: err = %v, want ErrSessionInvalid", err)
 	}
 }
 
 func TestSQLiteStoreSamplesOldestFirst(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
-	if _, err := store.CreateClient(ctx, "client-1", "Test Client", "hash-1"); err != nil {
-		t.Fatal(err)
-	}
+	createTestClient(t, store, "client-1", "Test Client")
 
 	base := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
 	for i, deviceID := range []string{"a", "b", "c"} {
@@ -109,9 +239,8 @@ func TestSQLiteStoreSamplesOldestFirst(t *testing.T) {
 func TestSQLiteStoreRecentSamplesRespectsLimit(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
-	if _, err := store.CreateClient(ctx, "client-1", "Test Client", "hash-1"); err != nil {
-		t.Fatal(err)
-	}
+	createTestClient(t, store, "client-1", "Test Client")
+
 	base := time.Now()
 	for i := 0; i < 5; i++ {
 		sample := telemetry.Sample{DeviceID: "a", Timestamp: base.Add(time.Duration(i) * time.Second), Values: map[string]float64{"RPM": float64(i)}}
@@ -135,9 +264,7 @@ func TestSQLiteStoreRecentSamplesRespectsLimit(t *testing.T) {
 func TestSQLiteStorePruneSamplesOlderThan(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
-	if _, err := store.CreateClient(ctx, "client-1", "Test Client", "hash-1"); err != nil {
-		t.Fatal(err)
-	}
+	createTestClient(t, store, "client-1", "Test Client")
 
 	old := telemetry.Sample{DeviceID: "a", Timestamp: time.Now(), Values: map[string]float64{"RPM": 1}}
 	if err := store.SaveSample(ctx, "client-1", old); err != nil {

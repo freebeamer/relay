@@ -3,8 +3,6 @@ package relay
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -22,8 +20,11 @@ import (
 const testAdminToken = "test-admin-token"
 
 // newTestServer builds a full Server (real SQLite store, temp file)
-// wrapped in an httptest.Server, and pre-registers one client with a
-// known raw API key. Returns the httptest server and the raw key.
+// wrapped in an httptest.Server, and pre-pairs one client ("client-1")
+// with a device session token minted directly against the store
+// (skipping the challenge/response dance — see pairing_test.go and
+// device_auth_test.go for tests that exercise that HTTP path itself).
+// Returns the httptest server and a valid device session token.
 func newTestServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "relay.sqlite"))
@@ -32,9 +33,9 @@ func newTestServer(t *testing.T) (*httptest.Server, string) {
 	}
 	t.Cleanup(func() { store.Close() })
 
-	const rawKey = "test-raw-api-key"
-	sum := sha256.Sum256([]byte(rawKey))
-	if _, err := store.CreateClient(context.Background(), "client-1", "Test Client", hex.EncodeToString(sum[:])); err != nil {
+	createTestClient(t, store, "client-1", "Test Client")
+	const sessionToken = "test-session-token"
+	if _, err := store.CreateDeviceSession(context.Background(), hashToken(sessionToken), "client-1", time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -44,7 +45,7 @@ func newTestServer(t *testing.T) (*httptest.Server, string) {
 	}
 	httpTestServer := httptest.NewServer(server.httpServer.Handler)
 	t.Cleanup(httpTestServer.Close)
-	return httpTestServer, rawKey
+	return httpTestServer, sessionToken
 }
 
 func TestNewServerRequiresAdminToken(t *testing.T) {
@@ -91,8 +92,8 @@ func postTelemetry(t *testing.T, serverURL, bearer string, sample telemetry.Samp
 	return resp
 }
 
-func TestTelemetryIngestRequiresValidAPIKey(t *testing.T) {
-	server, rawKey := newTestServer(t)
+func TestTelemetryIngestRequiresValidSessionToken(t *testing.T) {
+	server, sessionToken := newTestServer(t)
 	sample := telemetry.Sample{DeviceID: "phone-1", Timestamp: time.Now(), Values: map[string]float64{"RPM": 800}}
 
 	if resp := postTelemetry(t, server.URL, "", sample); resp.StatusCode != http.StatusUnauthorized {
@@ -101,19 +102,19 @@ func TestTelemetryIngestRequiresValidAPIKey(t *testing.T) {
 	if resp := postTelemetry(t, server.URL, "wrong-key", sample); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("wrong token: status = %d, want 401", resp.StatusCode)
 	}
-	resp := postTelemetry(t, server.URL, rawKey, sample)
+	resp := postTelemetry(t, server.URL, sessionToken, sample)
 	if resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("valid token: status = %d, want 202", resp.StatusCode)
 	}
 }
 
 func TestTelemetryIngestRejectsMalformedBody(t *testing.T) {
-	server, rawKey := newTestServer(t)
+	server, sessionToken := newTestServer(t)
 	req, err := http.NewRequest(http.MethodPost, server.URL+"/v1/telemetry", strings.NewReader("not json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer "+rawKey)
+	req.Header.Set("Authorization", "Bearer "+sessionToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -154,12 +155,12 @@ func TestClientsEndpointRequiresAdminToken(t *testing.T) {
 }
 
 func TestLiveFeedBackfillThenLive(t *testing.T) {
-	server, rawKey := newTestServer(t)
+	server, sessionToken := newTestServer(t)
 
 	// One sample uploaded before the live feed connects: should
 	// arrive as a backfill=true message.
 	backfillSample := telemetry.Sample{DeviceID: "phone-1", Timestamp: time.Now(), Values: map[string]float64{"RPM": 800}}
-	if resp := postTelemetry(t, server.URL, rawKey, backfillSample); resp.StatusCode != http.StatusAccepted {
+	if resp := postTelemetry(t, server.URL, sessionToken, backfillSample); resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("seed sample: status = %d", resp.StatusCode)
 	}
 
@@ -182,7 +183,7 @@ func TestLiveFeedBackfillThenLive(t *testing.T) {
 	// A sample uploaded after connecting should arrive live
 	// (backfill=false).
 	liveSample := telemetry.Sample{DeviceID: "phone-2", Timestamp: time.Now(), Values: map[string]float64{"RPM": 1200}}
-	if resp := postTelemetry(t, server.URL, rawKey, liveSample); resp.StatusCode != http.StatusAccepted {
+	if resp := postTelemetry(t, server.URL, sessionToken, liveSample); resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("live sample: status = %d", resp.StatusCode)
 	}
 

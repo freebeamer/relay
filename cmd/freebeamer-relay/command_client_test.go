@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-func TestProvisioningLink(t *testing.T) {
-	link := provisioningLink("https://telemetry.pact.net", "fh_live_abc123")
+func TestPairingLink(t *testing.T) {
+	link := pairingLink("https://telemetry.pact.net", "tok_abc123", "Bay 3 - N55")
 
 	parsed, err := url.Parse(link)
 	if err != nil {
@@ -23,13 +23,16 @@ func TestProvisioningLink(t *testing.T) {
 	if got := parsed.Query().Get("relay_url"); got != "https://telemetry.pact.net/v1/telemetry" {
 		t.Errorf("relay_url = %q, want %q", got, "https://telemetry.pact.net/v1/telemetry")
 	}
-	if got := parsed.Query().Get("api_key"); got != "fh_live_abc123" {
-		t.Errorf("api_key = %q, want %q", got, "fh_live_abc123")
+	if got := parsed.Query().Get("pairing_token"); got != "tok_abc123" {
+		t.Errorf("pairing_token = %q, want %q", got, "tok_abc123")
+	}
+	if got := parsed.Query().Get("name"); got != "Bay 3 - N55" {
+		t.Errorf("name = %q, want %q", got, "Bay 3 - N55")
 	}
 }
 
-func TestProvisioningLinkTrimsTrailingSlash(t *testing.T) {
-	link := provisioningLink("https://telemetry.pact.net/", "fh_live_abc123")
+func TestPairingLinkTrimsTrailingSlash(t *testing.T) {
+	link := pairingLink("https://telemetry.pact.net/", "tok_abc123", "Bay 3")
 	parsed, err := url.Parse(link)
 	if err != nil {
 		t.Fatal(err)

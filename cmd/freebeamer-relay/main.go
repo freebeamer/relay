@@ -36,9 +36,12 @@ const usage = `freebeamer-relay: FreeBeamer telemetry relay service
 
 Usage:
   freebeamer-relay serve [--addr HOST:PORT] [--db PATH] [--admin-token TOKEN] [--prune-after DURATION] [--prune-interval DURATION]
-  freebeamer-relay client add --name NAME [--db PATH]
+  freebeamer-relay client pairing-link create --name NAME [--db PATH] [--public-url URL] [--ttl DURATION]
   freebeamer-relay client list [--db PATH]
   freebeamer-relay client revoke ID [--db PATH]
+
+A device redeems a pairing link itself (POST /v1/pair with its own
+Ed25519 public key) — there's no separate CLI step to install a key.
 
 --admin-token defaults to $FREEBEAMER_RELAY_ADMIN_TOKEN.
 `

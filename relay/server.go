@@ -27,6 +27,15 @@ type Config struct {
 	// PruneInterval is how often the sweep runs; defaults to 5
 	// minutes if zero.
 	PruneInterval time.Duration
+	// PairingLinkTTL is how long a pairing link stays redeemable;
+	// defaults to 15 minutes if zero.
+	PairingLinkTTL time.Duration
+	// ChallengeTTL is how long an auth challenge stays valid; defaults
+	// to 2 minutes if zero.
+	ChallengeTTL time.Duration
+	// SessionTTL is how long a device session token stays valid;
+	// defaults to 24 hours if zero.
+	SessionTTL time.Duration
 }
 
 // Server is the relay's HTTP server: routes, auth, the live-feed hub
@@ -51,11 +60,24 @@ func NewServer(addr string, cfg Config) (*Server, error) {
 	if pruneEvery == 0 {
 		pruneEvery = 5 * time.Minute
 	}
+	pairingLinkTTL := cfg.PairingLinkTTL
+	if pairingLinkTTL == 0 {
+		pairingLinkTTL = 15 * time.Minute
+	}
+	challengeTTL := cfg.ChallengeTTL
+	if challengeTTL == 0 {
+		challengeTTL = 2 * time.Minute
+	}
+	sessionTTL := cfg.SessionTTL
+	if sessionTTL == 0 {
+		sessionTTL = 24 * time.Hour
+	}
 
 	hub := NewHub()
+	challenges := newChallengeStore()
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/telemetry", telemetryHandler(cfg.Store, hub))
-	mux.HandleFunc("GET /v1/capabilities", requireClientAuth(cfg.Store, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /v1/capabilities", requireDeviceSession(cfg.Store, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(telemetry.RelayCapabilities())
 	}))
@@ -66,6 +88,11 @@ func NewServer(addr string, cfg Config) (*Server, error) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(telemetry.MonitorCatalog())
 	}))
+	mux.HandleFunc("POST /v1/pairing-links", requireAdminAuth(cfg.AdminToken, pairingHandler(cfg.Store, pairingLinkTTL)))
+	mux.HandleFunc("POST /v1/pair", pairHandler(cfg.Store))
+	mux.HandleFunc("POST /v1/auth/challenge", challengeHandler(cfg.Store, challenges, challengeTTL))
+	mux.HandleFunc("POST /v1/auth/session", sessionHandler(cfg.Store, challenges, sessionTTL))
+	mux.HandleFunc("POST /v1/auth/logout", logoutHandler(cfg.Store))
 
 	return &Server{
 		httpServer: &http.Server{Addr: addr, Handler: mux},

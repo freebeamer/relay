@@ -20,7 +20,7 @@ const maxTelemetryBodyBytes = 64 * 1024
 // telemetry.Sample from an authenticated client device, persist it,
 // and fan it out to any live subscribers for that client.
 func telemetryHandler(store Store, hub *Hub) http.HandlerFunc {
-	return requireClientAuth(store, func(w http.ResponseWriter, r *http.Request) {
+	return requireDeviceSession(store, func(w http.ResponseWriter, r *http.Request) {
 		client, _ := clientFromContext(r.Context())
 
 		r.Body = http.MaxBytesReader(w, r.Body, maxTelemetryBodyBytes)
