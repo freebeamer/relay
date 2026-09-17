@@ -42,12 +42,18 @@ cert already exists).
 
 ## After deploying
 
-Issue a client API key from inside the running container:
+Mint a pairing link from inside the running container — a device
+redeems it itself (`POST /v1/pair`, generating its own Ed25519 keypair)
+rather than being handed a permanent key:
 
 ```sh
-docker compose exec freebeamer-relay /app/freebeamer-relay client add \
-  --name "<client name>" --db /data/freebeamer-relay.sqlite
+docker compose exec freebeamer-relay /app/freebeamer-relay client pairing-link create \
+  --name "<client name>" --db /data/freebeamer-relay.sqlite --public-url https://<domain>
 ```
+
+This prints a `freebeamer://connect` link (single-use, 15 minutes by
+default) to share with the device. See the relay v0 plan's Auth section
+for the full pairing/challenge/session flow.
 
 Point the mobile app's "Relay upload URL" at
 `https://<domain>/v1/telemetry` and the desktop app's live feed at
