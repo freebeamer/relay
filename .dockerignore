@@ -1,0 +1,11 @@
+.git
+.env
+**/.env
+**/.env.*
+**/*.sqlite
+**/*.sqlite-*
+**/*.db
+**/*.db-*
+testdata/private
+bin
+.tools

@@ -1,0 +1,13 @@
+
+/testdata/private/
+/.tools/
+/bin/
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+go.work
+go.work.sum

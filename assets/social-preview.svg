@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">FreeBeamer / Relay</title>
+  <desc id="desc">From acquisition to a shared live view. Experimental open-source automotive software.</desc>
+  <rect width="1280" height="640" fill="#10151a"/>
+  <path d="M0 500H1280M0 540H1280M0 580H1280M880 0V640M960 0V640M1040 0V640M1120 0V640M1200 0V640" stroke="#1e2b36" fill="none"/>
+  <rect x="64" y="62" width="64" height="48" rx="5" stroke="#f2b66d" fill="#172536"/>
+  <text x="96" y="94" text-anchor="middle" fill="#f2b66d" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="700">FB</text>
+  <text x="152" y="94" fill="#aeb8c3" font-family="DejaVu Sans,sans-serif" font-size="18" letter-spacing="3">OPEN CALIBRATION TOOLING</text>
+  <path d="M64 176H1216" stroke="#343e49"/>
+  <text x="64" y="286" fill="#e7edf3" font-family="DejaVu Sans,sans-serif" font-size="66" font-weight="700">FreeBeamer / Relay</text>
+  <text x="68" y="350" fill="#aeb8c3" font-family="DejaVu Sans,sans-serif" font-size="25">From acquisition to a shared live view.</text>
+  <path d="M68 438H170L205 405L248 471L289 416L323 438H410L445 382L479 455L516 425H602" fill="none" stroke="#f2b66d" stroke-width="4" stroke-linejoin="round"/>
+  <circle cx="602" cy="425" r="7" fill="#f2b66d"/>
+  <rect x="64" y="545" width="197" height="36" rx="18" fill="#1e242b"/>
+  <text x="162" y="569" text-anchor="middle" fill="#f2b66d" font-family="DejaVu Sans,sans-serif" font-size="14">EXPERIMENTAL / MIT</text>
+  <text x="1216" y="570" text-anchor="end" fill="#77828e" font-family="DejaVu Sans,sans-serif" font-size="16">FreeBeamer contributors</text>
+</svg>

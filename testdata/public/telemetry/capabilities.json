@@ -1,0 +1,13 @@
+[
+ {"name":"v2","status":200,"body":{"telemetry_versions":[1,2],"catalogs":[{"id":"mhd.mg1.monitor","version":1}]},"version":2},
+ {"name":"legacy","status":200,"body":{"telemetry_versions":[1],"catalogs":[]},"version":1},
+ {"name":"old-relay","status":404,"body":{},"version":1},
+ {"name":"old-method","status":405,"body":{},"version":1},
+ {"name":"wrong-catalog-legacy","status":200,"body":{"telemetry_versions":[1,2],"catalogs":[{"id":"different","version":1}]},"version":1},
+ {"name":"wrong-catalog","status":200,"body":{"telemetry_versions":[2],"catalogs":[{"id":"mhd.mg1.monitor","version":2}]},"version":0},
+ {"name":"unknown-version","status":200,"body":{"telemetry_versions":[3],"catalogs":[]},"version":0},
+ {"name":"unauthorized","status":401,"body":{},"version":0},
+ {"name":"unavailable","status":503,"body":{},"version":0},
+ {"name":"redirect","status":302,"body":{},"version":0},
+ {"name":"malformed","status":200,"body":{},"version":0}
+]

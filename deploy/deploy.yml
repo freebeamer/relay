@@ -1,0 +1,85 @@
+---
+# Deploys freebeamer-relay: builds+runs the Docker container (see
+# Dockerfile/docker-compose.yml in this directory).
+#
+# Usage: set deploy/.env (see .env.example) and --domain below to a
+# real hostname pointed at this server before running.
+- name: Deploy freebeamer-relay
+  hosts: all
+  become: true
+
+  vars:
+    domain: relay.freebeamer.example # override: -e domain=your.real.domain
+    app_port: 8095
+    certbot_email: "" # required: -e certbot_email=you@example.com
+    nginx_site: freebeamer-relay
+    cert_path: /etc/letsencrypt/live/{{ domain }}/fullchain.pem
+
+  tasks:
+    - name: Require an explicit certificate contact
+      ansible.builtin.assert:
+        that:
+          - certbot_email | length > 0
+        fail_msg: Set certbot_email to your certificate contact email.
+
+    - name: Confirm deploy/.env exists (freebeamer-relay refuses to start without FREEBEAMER_RELAY_ADMIN_TOKEN)
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/.env"
+      register: relay_env_file
+      become: false
+
+    - name: Fail if deploy/.env is missing
+      ansible.builtin.fail:
+        msg: "{{ playbook_dir }}/.env is missing — copy .env.example to .env and set FREEBEAMER_RELAY_ADMIN_TOKEN first."
+      when: not relay_env_file.stat.exists
+
+    - name: Build and start Docker container
+      ansible.builtin.command:
+        cmd: docker compose up -d --build
+        chdir: "{{ playbook_dir }}"
+      changed_when: true
+
+    - name: Check whether SSL certificate already exists
+      ansible.builtin.stat:
+        path: "{{ cert_path }}"
+      register: ssl_cert
+
+    - name: Write nginx config
+      ansible.builtin.template:
+        src: templates/freebeamer-relay.conf.j2
+        dest: /etc/nginx/sites-available/{{ nginx_site }}
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload nginx
+
+    - name: Enable site
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/{{ nginx_site }}
+        dest: /etc/nginx/sites-enabled/{{ nginx_site }}
+        state: link
+      notify: Reload nginx
+
+    - name: Validate nginx config
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Apply nginx config before certbot
+      ansible.builtin.meta: flush_handlers
+
+    - name: Obtain SSL certificate via certbot
+      ansible.builtin.command: >
+        certbot --nginx
+        --non-interactive
+        --agree-tos
+        --redirect
+        --email {{ certbot_email }}
+        -d {{ domain }}
+      when: not ssl_cert.stat.exists
+      notify: Reload nginx
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded

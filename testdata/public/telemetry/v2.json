@@ -1,0 +1,1 @@
+{"version":2,"device_id":"android-fixture","timestamp":"2026-09-16T10:00:00.123456Z","session":{"id":"00112233445566778899aabbccddeeff","catalog_id":"mhd.mg1.monitor","catalog_version":1,"vehicle":{"label":"N55 trial","ecu_family":"MEVD17.2.6"}},"sequence":0,"values":{"RPM":800,"LOAD":-12.5}}

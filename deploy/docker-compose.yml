@@ -1,0 +1,16 @@
+services:
+  freebeamer-relay:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: freebeamer-relay
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - relay-data:/data
+    ports:
+      - "127.0.0.1:8095:8080"
+
+volumes:
+  relay-data:
