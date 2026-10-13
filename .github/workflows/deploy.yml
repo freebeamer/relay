@@ -25,15 +25,24 @@ jobs:
     needs: test
     runs-on: ubuntu-24.04
     steps:
-      - name: Deploy to relay.pactsign.net host
+      - name: Deploy to relay host
+        # DEPLOY_HOST is the host's address; DEPLOY_KNOWN_HOSTS is its pinned
+        # known_hosts line(s). Both are repository variables, so moving the
+        # relay to a new server needs no workflow change.
         env:
           SSH_KEY: ${{ secrets.RELAY_DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
         run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_KNOWN_HOSTS" ]; then
+            echo "::error::Set the DEPLOY_HOST and DEPLOY_KNOWN_HOSTS repository variables."
+            exit 1
+          fi
           umask 077
           mkdir -p ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
-          echo "176.58.124.40 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKi40S+tZB4UUO/gYr2wfhindJiKZmGRTUJG3CzM6AcM" > ~/.ssh/known_hosts
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           # The deploy key is restricted server-side to a forced command
           # (see deploy/README.md); it always runs the same deploy chain
           # regardless of what's passed here.
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes source@176.58.124.40
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "source@$DEPLOY_HOST"

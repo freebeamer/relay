@@ -21,6 +21,12 @@ The SSH private key lives only in the `RELAY_DEPLOY_SSH_KEY` repository
 secret. Rotate it by generating a new keypair, replacing the
 `authorized_keys` entry on the host, and updating the secret.
 
+The target host comes from two repository variables: `DEPLOY_HOST` (its
+address) and `DEPLOY_KNOWN_HOSTS` (its pinned `known_hosts` line, e.g. from
+`ssh-keyscan -t ed25519 <host>` checked against a fingerprint you trust).
+Moving the relay to a new server means updating those variables and
+authorizing the deploy key there; the workflow itself does not change.
+
 ## Manual first-time setup
 
 1. `cp .env.example .env` and set `FREEBEAMER_RELAY_ADMIN_TOKEN` to a
