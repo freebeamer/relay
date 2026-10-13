@@ -28,17 +28,14 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// liveHandler handles GET /v1/live?client_id=ID (admin-only):
+// liveHandler handles GET /v1/live (admin-only). An optional client_id
+// limits the feed to that client; omitting it subscribes to the whole garage. It
 // upgrades to a WebSocket, sends a short backfill burst of recently
-// stored samples for client_id, then streams new samples as they're
+// stored samples in that scope, then streams new samples as they're
 // published to hub for it.
 func liveHandler(store Store, hub *Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		clientID := r.URL.Query().Get("client_id")
-		if clientID == "" {
-			writeError(w, http.StatusBadRequest, "client_id is required")
-			return
-		}
 
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {

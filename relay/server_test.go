@@ -209,15 +209,58 @@ func TestLiveFeedRequiresAdminToken(t *testing.T) {
 	}
 }
 
-func TestLiveFeedRequiresClientID(t *testing.T) {
-	server, _ := newTestServer(t)
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/v1/live"
-	header := http.Header{"Authorization": []string{"Bearer " + testAdminToken}}
-	_, resp, err := websocket.DefaultDialer.Dial(wsURL, header)
-	if err == nil {
-		t.Fatal("expected the WebSocket handshake to fail without client_id")
+func TestGarageLiveFeedBackfillAndNewClient(t *testing.T) {
+	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "garage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if resp == nil || resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("resp = %+v", resp)
+	defer store.Close()
+	pair := func(clientID, token string) {
+		createTestClient(t, store, clientID, clientID)
+		if _, err := store.CreateDeviceSession(context.Background(), hashToken(token), clientID, time.Now().Add(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rawKey := "first-session"
+	pair("client-1", rawKey)
+	relay, err := NewServer("127.0.0.1:0", Config{Store: store, AdminToken: testAdminToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(relay.httpServer.Handler)
+	defer server.Close()
+	sample := telemetry.Sample{DeviceID: "phone-1", Timestamp: time.Now(), Values: map[string]float64{"RPM": 800}}
+	resp := postTelemetry(t, server.URL, rawKey, sample)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatal(resp.StatusCode)
+	}
+	header := http.Header{"Authorization": []string{"Bearer " + testAdminToken}}
+	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/v1/live", header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	var envelope relayapi.LiveEnvelope
+	if err := conn.ReadJSON(&envelope); err != nil {
+		t.Fatal(err)
+	}
+	if !envelope.Backfill || envelope.DeviceID != "phone-1" {
+		t.Fatalf("backfill = %+v", envelope)
+	}
+	secondKey := "second-session"
+	pair("client-2", secondKey)
+	sample.DeviceID = "phone-2"
+	resp2 := postTelemetry(t, server.URL, secondKey, sample)
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusAccepted {
+		t.Fatal(resp2.StatusCode)
+	}
+	if err := conn.ReadJSON(&envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Backfill || envelope.DeviceID != "phone-2" {
+		t.Fatalf("live = %+v", envelope)
 	}
 }

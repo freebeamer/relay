@@ -20,7 +20,8 @@ func NewHub() *Hub {
 	return &Hub{subs: make(map[string]map[chan telemetry.Sample]struct{})}
 }
 
-// Subscribe registers a new listener for clientID's samples. Call
+// Subscribe registers a new listener for clientID's samples. An empty
+// clientID subscribes to every client, including clients added later. Call
 // unsubscribe when done (typically via defer) to release it; it's
 // safe to call more than once.
 func (h *Hub) Subscribe(clientID string) (ch <-chan telemetry.Sample, unsubscribe func()) {
@@ -57,10 +58,15 @@ func (h *Hub) Subscribe(clientID string) (ch <-chan telemetry.Sample, unsubscrib
 func (h *Hub) Publish(clientID string, sample telemetry.Sample) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for c := range h.subs[clientID] {
-		select {
-		case c <- sample:
-		default:
+	for scope, subscribers := range h.subs {
+		if scope != "" && scope != clientID {
+			continue
+		}
+		for c := range subscribers {
+			select {
+			case c <- sample:
+			default:
+			}
 		}
 	}
 }

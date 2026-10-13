@@ -386,10 +386,10 @@ func (s *SQLiteStore) SaveSample(ctx context.Context, clientID string, sample te
 func (s *SQLiteStore) RecentSamples(ctx context.Context, clientID string, limit int) ([]telemetry.Sample, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT device_id, ts_client, values_json, sample_json, ts_received FROM samples
-		 WHERE client_id = ?
+		 WHERE (? = '' OR client_id = ?)
 		 ORDER BY id DESC
 		 LIMIT ?`,
-		clientID, limit,
+		clientID, clientID, limit,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("relay: recent samples: %w", err)

@@ -57,7 +57,8 @@ for the full pairing/challenge/session flow.
 
 Point the mobile app's "Relay upload URL" at
 `https://<domain>/v1/telemetry` and the desktop app's live feed at
-`wss://<domain>/v1/live?client_id=...` — both routes are served by the
+`wss://<domain>/v1/live` (the whole garage; add `?client_id=...` to limit
+it to one client) — both routes are served by the
 same container; the nginx template proxies everything (including the
 WebSocket upgrade) to it. See [the relay design](https://github.com/freebeamer/core/blob/main/docs/freebeamer-relay-v0-plan.md) for
 the full API.

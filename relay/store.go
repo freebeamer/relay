@@ -98,7 +98,7 @@ type Store interface {
 	SaveSample(ctx context.Context, clientID string, sample telemetry.Sample) error
 	// RecentSamples returns up to limit of the most recently received
 	// samples for clientID, oldest first (the order a live feed's
-	// backfill burst should replay them in).
+	// backfill burst should replay them in). An empty clientID includes all clients.
 	RecentSamples(ctx context.Context, clientID string, limit int) ([]telemetry.Sample, error)
 	// PruneSamplesOlderThan deletes every sample received before
 	// cutoff, across all clients, and reports how many were removed.
