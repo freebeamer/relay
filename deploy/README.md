@@ -5,27 +5,33 @@ Requires Docker Compose, Ansible, nginx, and certbot on the deployment host.
 
 ## Automated deploys
 
-`.github/workflows/deploy.yml` deploys on every push to `main` (after
-tests pass): it SSHes into the deployment host with a dedicated key that
-is restricted server-side to a forced command
-(`/home/source/bin/freebeamer-relay-deploy.sh`, outside this repo), which
-pulls `main` into a persistent checkout and re-runs the same
-`ansible-playbook deploy.yml` command described below. First run
-bootstraps `deploy/.env` (a random `FREEBEAMER_RELAY_ADMIN_TOKEN`) and
-the nginx/certbot setup; later runs just rebuild the container, since
-those steps are idempotent and no-op when nothing changed. The relay is
-live at `https://telemetry.pactsign.net` (see the mobile README for why
-this is a temporary hostname).
+`.github/workflows/deploy.yml` deploys on every push to `main` (after tests
+pass). All host-specific values are repository secrets
+(Settings → Secrets and variables → Actions → Secrets):
 
-The SSH private key lives only in the `RELAY_DEPLOY_SSH_KEY` repository
-secret. Rotate it by generating a new keypair, replacing the
-`authorized_keys` entry on the host, and updating the secret.
+| Secret | Contents |
+| --- | --- |
+| `RELAY_DEPLOY_SSH_KEY` | Private deploy key (Ed25519) |
+| `RELAY_DEPLOY_HOST` | Host address |
+| `RELAY_DEPLOY_KNOWN_HOSTS` | Pinned host key line, from `ssh-keyscan -t ed25519 <host>` checked against a fingerprint you trust |
+| `RELAY_ADMIN_TOKEN` | `FREEBEAMER_RELAY_ADMIN_TOKEN` for the relay (24+ URL-safe characters) |
+| `RELAY_DOMAIN` | Public hostname, e.g. `telemetry.example.net` |
+| `RELAY_CERTBOT_EMAIL` | Let's Encrypt contact address |
 
-The target host comes from two repository variables: `DEPLOY_HOST` (its
-address) and `DEPLOY_KNOWN_HOSTS` (its pinned `known_hosts` line, e.g. from
-`ssh-keyscan -t ed25519 <host>` checked against a fingerprint you trust).
-Moving the relay to a new server means updating those variables and
-authorizing the deploy key there; the workflow itself does not change.
+The workflow SSHes in as `source` and sends the token, domain and email as
+`KEY=VALUE` lines on stdin. On the host the deploy key is restricted to
+[`forced-command.sh`](forced-command.sh), which resets the checkout to
+`origin/main` and runs [`remote-deploy.sh`](remote-deploy.sh). That script
+accepts only those three keys, validates them, rewrites `deploy/.env` (mode
+0600) and runs `ansible-playbook deploy.yml`. Rotating the token or moving to
+a new host is a secrets change; the host keeps no other deploy configuration.
+
+One-time host setup: clone this repository to
+`/home/source/studio/build_repositories/freebeamer/relay` (or set
+`RELAY_CHECKOUT` in the forced command), install `forced-command.sh` as
+`~/bin/freebeamer-relay-deploy.sh`, and add the deploy public key to
+`~/.ssh/authorized_keys` with the `command=` restriction shown in that file.
+The `source` user needs passwordless sudo for the playbook's `become` steps.
 
 ## Manual first-time setup
 

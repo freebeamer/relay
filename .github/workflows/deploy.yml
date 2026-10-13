@@ -26,23 +26,30 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Deploy to relay host
-        # DEPLOY_HOST is the host's address; DEPLOY_KNOWN_HOSTS is its pinned
-        # known_hosts line(s). Both are repository variables, so moving the
-        # relay to a new server needs no workflow change.
+        # Everything host-specific lives in repository secrets. The deploy key
+        # is restricted on the host to deploy/forced-command.sh, which updates
+        # the checkout and runs deploy/remote-deploy.sh with this step's
+        # payload on stdin.
         env:
           SSH_KEY: ${{ secrets.RELAY_DEPLOY_SSH_KEY }}
-          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
-          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.RELAY_DEPLOY_HOST }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.RELAY_DEPLOY_KNOWN_HOSTS }}
+          ADMIN_TOKEN: ${{ secrets.RELAY_ADMIN_TOKEN }}
+          DOMAIN: ${{ secrets.RELAY_DOMAIN }}
+          CERTBOT_EMAIL: ${{ secrets.RELAY_CERTBOT_EMAIL }}
         run: |
-          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_KNOWN_HOSTS" ]; then
-            echo "::error::Set the DEPLOY_HOST and DEPLOY_KNOWN_HOSTS repository variables."
+          missing=""
+          for name in SSH_KEY DEPLOY_HOST DEPLOY_KNOWN_HOSTS ADMIN_TOKEN DOMAIN CERTBOT_EMAIL; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing deploy secrets:$missing (see deploy/README.md)"
             exit 1
           fi
           umask 077
           mkdir -p ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          # The deploy key is restricted server-side to a forced command
-          # (see deploy/README.md); it always runs the same deploy chain
-          # regardless of what's passed here.
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "source@$DEPLOY_HOST"
+          printf 'FREEBEAMER_RELAY_ADMIN_TOKEN=%s\nRELAY_DOMAIN=%s\nRELAY_CERTBOT_EMAIL=%s\n' \
+              "$ADMIN_TOKEN" "$DOMAIN" "$CERTBOT_EMAIL" |
+            ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "source@$DEPLOY_HOST"
